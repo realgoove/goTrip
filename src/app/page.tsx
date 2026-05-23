@@ -37,8 +37,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [parsedFlights, setParsedFlights] = useState<ParsedFlight[]>([]);
   const [selectedFlight, setSelectedFlight] = useState(0);
-  const [homeAddress, setHomeAddress] = useState('');
-  const [destAddress, setDestAddress] = useState('');
+  const [homeAddress, setHomeAddress] = useState('東京都新宿区西新宿2-8-1');
+  const [destAddress, setDestAddress] = useState('서울특별시 중구 세종대로 110');
   const [bufferMins, setBufferMins] = useState(90);
 
   const fetchingRef = useRef(false);
