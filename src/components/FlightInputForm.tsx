@@ -42,7 +42,7 @@ export function FlightInputForm({
     >
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-sm font-semibold text-gray-700">✈️ 항공권 정보</label>
+          <label className="text-sm font-semibold text-gray-700">✈️ 이티켓 정보</label>
           <button
             type="button"
             onClick={() => onItineraryChange(SAMPLE_ITINERARY)}
