@@ -468,11 +468,16 @@ export function TripTimeline({ plan, loading, bufferMins = 90 }: Props) {
 
       {/* ── DEPARTURE LEG (transit, terminal stop excluded → goes into airport group) ── */}
       {departureRoute?.status === 'OK' ? (
-        japRowsMain.map((row, i) => {
-          if (row.kind === 'stop')  return <StopItem  key={i} row={row} />;
-          if (row.kind === 'walk')  return <WalkItem  key={i} row={row} />;
-          if (row.kind === 'trans') return <TransItem key={i} row={row} />;
-        })
+        <>
+          {japRowsMain.map((row, i) => {
+            if (row.kind === 'stop')  return <StopItem  key={i} row={row} />;
+            if (row.kind === 'walk')  return <WalkItem  key={i} row={row} />;
+            if (row.kind === 'trans') return <TransItem key={i} row={row} />;
+          })}
+          {departureRoute.googleMapsUrl && (
+            <FallbackRow url={departureRoute.googleMapsUrl} label={isJapanDep ? 'Yahoo 路線情報에서 보기' : 'Naver 지도에서 보기'} />
+          )}
+        </>
       ) : (
         <FallbackRow url={depFallback} label={isJapanDep ? 'Yahoo 路線情報에서 경로 확인' : 'Naver 지도에서 경로 확인'} />
       )}
@@ -520,11 +525,16 @@ export function TripTimeline({ plan, loading, bufferMins = 90 }: Props) {
 
       {/* ── KOREA LEG (directly after exit) ──────────────────────────────── */}
       {arrivalRoute?.status === 'OK' ? (
-        korRows.map((row, i) => {
-          if (row.kind === 'stop')  return <StopItem  key={i} row={row} />;
-          if (row.kind === 'walk')  return <WalkItem  key={i} row={row} />;
-          if (row.kind === 'trans') return <TransItem key={i} row={row} />;
-        })
+        <>
+          {korRows.map((row, i) => {
+            if (row.kind === 'stop')  return <StopItem  key={i} row={row} />;
+            if (row.kind === 'walk')  return <WalkItem  key={i} row={row} />;
+            if (row.kind === 'trans') return <TransItem key={i} row={row} />;
+          })}
+          {arrivalRoute.googleMapsUrl && (
+            <FallbackRow url={arrivalRoute.googleMapsUrl} label={isJapanDep ? 'Naver 지도에서 보기' : 'Yahoo 路線情報에서 보기'} />
+          )}
+        </>
       ) : (
         <FallbackRow url={arrFallback} label={isJapanDep ? 'Naver 지도에서 경로 확인' : 'Yahoo 路線情報에서 경로 확인'} />
       )}
