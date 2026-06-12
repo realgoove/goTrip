@@ -48,6 +48,7 @@ export default function Home() {
 
   const historyHook = useHistory(!!session);
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   async function fetchRoutes(flights: ParsedFlight[], idx: number, home: string, dest: string, buffer: number = bufferMins) {
     if (fetchingRef.current) return;
@@ -112,25 +113,35 @@ export default function Home() {
     await fetchRoutes(flights, 0, homeAddress, destAddress);
   }
 
-  function handleSave() {
-    if (!parsedFlights.length) return;
+  async function handleSave() {
+    if (!parsedFlights.length) {
+      setError('저장할 항공편 정보가 없습니다. 먼저 경로를 검색해 주세요.');
+      return;
+    }
     const outbound = parsedFlights.find(f => f.from.country === 'Japan') ?? parsedFlights[0];
     const ret = parsedFlights.find(f => f.from.country === 'South Korea');
     const fromLabel = outbound.from.country === 'Japan' ? '일본' : '한국';
     const toLabel = outbound.to.country === 'South Korea' ? '한국' : '일본';
-    historyHook.save({
-      flightDateISO: outbound.dateISO,
-      returnDateISO: ret?.dateISO,
-      label: `${fromLabel}-${toLabel}`,
-      itinerary: lastItineraryRef.current,
-      homeAddress,
-      destAddress,
-      bufferMins,
-      // 계산된 경로 전체를 함께 저장 → 이력 선택 시 재검색 없이 복원
-      plan: plan ?? undefined,
-      parsedFlights,
-      selectedFlight,
-    });
+    try {
+      await historyHook.save({
+        flightDateISO: outbound.dateISO,
+        returnDateISO: ret?.dateISO,
+        label: `${fromLabel}-${toLabel}`,
+        itinerary: lastItineraryRef.current,
+        homeAddress,
+        destAddress,
+        bufferMins,
+        // 계산된 경로 전체를 함께 저장 → 이력 선택 시 재검색 없이 복원
+        plan: plan ?? undefined,
+        parsedFlights,
+        selectedFlight,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      console.error('[handleSave] failed:', e);
+      setError('저장에 실패했습니다. 다시 시도해 주세요.');
+    }
   }
 
   async function handleCopy() {
@@ -323,7 +334,7 @@ export default function Home() {
                     onClick={handleSave}
                     className="flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-xl hover:bg-green-100 transition-colors"
                   >
-                    💾 저장
+                    {saved ? '✅ 저장됨' : '💾 저장'}
                   </button>
                 )}
               </div>
