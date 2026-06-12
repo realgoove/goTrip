@@ -64,14 +64,21 @@ function buildRoute(itin: any, naverUrl: string): TransitRoute {
         });
       }
     } else {
-      const isBus = leg.mode === 'BUS';
+      const isBus = leg.mode === 'BUS' || leg.mode === 'EXPRESSBUS';
+      // route 가 "일반:30-3", "시외버스:인천공항T2-어정역" 처럼 "{종류}:{노선}" 형태 → 노선부만 사용
+      const rawRoute: string = leg.route || '';
+      const routeName = rawRoute.includes(':') ? rawRoute.split(':').slice(1).join(':') : rawRoute;
+      let lineName: string;
+      if (leg.mode === 'EXPRESSBUS') lineName = `${routeName} (시외/고속)`;
+      else if (leg.mode === 'BUS') lineName = `${routeName}번`;
+      else lineName = routeName || leg.mode; // 지하철/기차 노선명
       // passStopList.stationList 는 시·종점을 포함 → 정차역 수는 길이-1
       const stationCount = leg.passStopList?.stationList?.length;
       steps.push({
         mode: 'TRANSIT',
-        lineName: isBus ? `${leg.route} 버스` : (leg.route || leg.mode),
-        lineColor: isBus ? undefined : subwayColor(leg.route),
-        vehicleType: leg.mode === 'BUS' ? 'BUS' : 'SUBWAY',
+        lineName,
+        lineColor: isBus ? undefined : subwayColor(routeName),
+        vehicleType: isBus ? 'BUS' : 'SUBWAY',
         departureStop: leg.start?.name,
         arrivalStop: leg.end?.name,
         numStops: stationCount ? Math.max(stationCount - 1, 1) : undefined,
