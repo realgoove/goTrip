@@ -12,7 +12,8 @@ export interface SavedSearch {
   destAddress: string;
   bufferMins: number;
   // 저장 시점에 계산된 경로 전체 — 이력 선택 시 재검색 없이 그대로 복원한다.
-  plan?: TripPlan;
+  plans?: TripPlan[];          // 왕복(모든 항공편)의 경로
+  plan?: TripPlan;             // 구버전 호환 (단일 경로)
   parsedFlights?: ParsedFlight[];
   selectedFlight?: number;
 }

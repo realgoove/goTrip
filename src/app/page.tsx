@@ -32,6 +32,8 @@ export default function Home() {
   const { data: session, status } = useSession();
   const [itinerary, setItinerary] = useState('');
   const [plan, setPlan] = useState<TripPlan | null>(null);
+  // 항공편 인덱스별 경로 캐시 — 한 번 검색하면 보관해 재검색을 막는다
+  const [plans, setPlans] = useState<(TripPlan | null)[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parsedFlights, setParsedFlights] = useState<ParsedFlight[]>([]);
@@ -40,9 +42,6 @@ export default function Home() {
   const [destAddress, setDestAddress] = useState('');
   const [bufferMins, setBufferMins] = useState(90);
 
-  const fetchingRef = useRef(false);
-  const hasSearched = useRef(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastItineraryRef = useRef('');
   const initedRef = useRef(false);
 
@@ -50,16 +49,12 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  async function fetchRoutes(flights: ParsedFlight[], idx: number, home: string, dest: string, buffer: number = bufferMins) {
-    if (fetchingRef.current) return;
-    fetchingRef.current = true;
+  // 경로 계산만 수행하는 순수 함수 (setState 부작용 없음)
+  async function computeRoute(flights: ParsedFlight[], idx: number, home: string, dest: string, buffer: number): Promise<TripPlan> {
     const flight = flights[idx];
-    setLoading(true);
-
     const isJapanDep = flight.from.country === 'Japan';
     const originAddr = isJapanDep ? home : dest;
     const destinAddr = isJapanDep ? dest : home;
-    setPlan({ homeAddress: originAddr, destAddress: destinAddr, flight, departureRoute: null, arrivalRoute: null });
 
     const airportArrivalMins = subtractMinutes(flight.departureTime, buffer);
     const airportDepMins = addMinutes(flight.arrivalTime, 60);
@@ -94,11 +89,10 @@ export default function Home() {
       ]);
     }
 
-    setPlan({ homeAddress: originAddr, destAddress: destinAddr, flight, departureRoute: depRoute, arrivalRoute: arrRoute });
-    setLoading(false);
-    fetchingRef.current = false;
+    return { homeAddress: originAddr, destAddress: destinAddr, flight, departureRoute: depRoute, arrivalRoute: arrRoute };
   }
 
+  // 검색 버튼: 왕복(모든 항공편) 경로를 한 번에 검색해 캐시에 채운다
   async function handleSubmit(itin: string) {
     setError(null);
     const flights = parseItinerary(itin);
@@ -109,8 +103,19 @@ export default function Home() {
     lastItineraryRef.current = itin;
     setParsedFlights(flights);
     setSelectedFlight(0);
-    hasSearched.current = true;
-    await fetchRoutes(flights, 0, homeAddress, destAddress);
+    setLoading(true);
+    try {
+      const results = await Promise.all(
+        flights.map((_, i) => computeRoute(flights, i, homeAddress, destAddress, bufferMins))
+      );
+      setPlans(results);
+      setPlan(results[0]);
+    } catch (e) {
+      console.error('[handleSubmit] route search failed:', e);
+      setError('경로 검색 중 오류가 발생했습니다. 다시 시도해 주세요.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSave() {
@@ -118,6 +123,24 @@ export default function Home() {
       setError('저장할 항공편 정보가 없습니다. 먼저 경로를 검색해 주세요.');
       return;
     }
+    // 왕복 양쪽을 모두 저장 — 아직 계산되지 않은 항공편이 있으면 이때 마저 검색해 채운다
+    let allPlans = plans;
+    if (allPlans.filter(Boolean).length < parsedFlights.length) {
+      setLoading(true);
+      try {
+        allPlans = await Promise.all(
+          parsedFlights.map((_, i) => plans[i] ?? computeRoute(parsedFlights, i, homeAddress, destAddress, bufferMins))
+        );
+        setPlans(allPlans);
+      } catch (e) {
+        console.error('[handleSave] compute failed:', e);
+        setError('저장 전 경로 계산에 실패했습니다.');
+        setLoading(false);
+        return;
+      }
+      setLoading(false);
+    }
+
     const outbound = parsedFlights.find(f => f.from.country === 'Japan') ?? parsedFlights[0];
     const ret = parsedFlights.find(f => f.from.country === 'South Korea');
     const fromLabel = outbound.from.country === 'Japan' ? '일본' : '한국';
@@ -131,10 +154,10 @@ export default function Home() {
         homeAddress,
         destAddress,
         bufferMins,
-        // 계산된 경로 전체를 함께 저장 → 이력 선택 시 재검색 없이 복원
-        plan: plan ?? undefined,
-        parsedFlights,
+        // 왕복 모든 항공편의 경로를 함께 저장 → 이력/항공편 전환 시 재검색 없이 복원
+        plans: allPlans as TripPlan[],
         selectedFlight,
+        parsedFlights,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -159,43 +182,41 @@ export default function Home() {
     setBufferMins(s.bufferMins);
     setError(null);
     lastItineraryRef.current = s.itinerary;
+    const flights = s.parsedFlights ?? parseItinerary(s.itinerary);
+    const idx = s.selectedFlight ?? 0;
 
-    if (s.plan) {
-      // 저장된 경로를 그대로 복원 — 재검색하지 않는다
-      setParsedFlights(s.parsedFlights ?? parseItinerary(s.itinerary));
-      setSelectedFlight(s.selectedFlight ?? 0);
-      setPlan(s.plan);
-      hasSearched.current = false; // 주소/버퍼 변경에 의한 자동 재검색 방지
-    } else {
-      // 경로가 저장되지 않은 옛 이력 → 기존처럼 검색
-      const flights = parseItinerary(s.itinerary);
-      if (!flights.length) return;
+    if (s.plans && s.plans.length) {
+      // 왕복 모든 경로를 그대로 복원 — 재검색하지 않는다 (항공편 전환도 캐시 사용)
       setParsedFlights(flights);
+      setPlans(s.plans);
+      setSelectedFlight(idx);
+      setPlan(s.plans[idx] ?? s.plans[0] ?? null);
+    } else if (s.plan) {
+      // 단일 경로만 저장된 옛 이력 → 해당 편만 복원
+      setParsedFlights(flights);
+      setPlans(flights.map((_, i) => (i === idx ? s.plan! : null)));
+      setSelectedFlight(idx);
+      setPlan(s.plan);
+    } else {
+      // 경로가 저장되지 않은 아주 옛 이력 → 입력만 채우고 검색 버튼을 누르도록 안내
+      setParsedFlights(flights);
+      setPlans([]);
       setSelectedFlight(0);
-      hasSearched.current = true;
-      fetchRoutes(flights, 0, s.homeAddress, s.destAddress, s.bufferMins);
+      setPlan(null);
+      setError('이 기록에는 저장된 경로가 없습니다. "경로 검색"을 눌러 주세요.');
     }
   }
 
-  useEffect(() => {
-    if (!hasSearched.current || !parsedFlights.length) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      if (!fetchingRef.current) {
-        fetchRoutes(parsedFlights, selectedFlight, homeAddress, destAddress, bufferMins);
-      }
-    }, 900);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [homeAddress, destAddress, bufferMins]);
+  // (자동 재검색 제거됨) 주소·버퍼를 바꿔도 자동 검색하지 않는다.
+  // 새 검색은 오직 "경로 검색" 버튼(handleSubmit)으로만 수행해 TMAP 호출을 아낀다.
 
-  // 로그인 후 이력이 로드되면 가장 최근 저장한 경로를 자동으로 표시 (재검색 없음)
+  // 로그인 후 이력이 로드되면 "경로가 저장된" 가장 최근 기록을 자동 표시 (재검색 없음)
   useEffect(() => {
     if (initedRef.current || !session) return;
-    if (historyHook.history.length > 0) {
-      initedRef.current = true;
-      handleSelectHistory(historyHook.history[0]);
-    }
+    if (historyHook.history.length === 0) return;
+    initedRef.current = true;
+    const withRoute = historyHook.history.find(h => (h.plans && h.plans.length) || h.plan);
+    if (withRoute) handleSelectHistory(withRoute);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyHook.history, session]);
 
@@ -301,7 +322,8 @@ export default function Home() {
                   key={i}
                   onClick={() => {
                     setSelectedFlight(i);
-                    fetchRoutes(parsedFlights, i, homeAddress, destAddress);
+                    // 캐시된 경로를 표시 — 재검색하지 않는다 (검색 버튼으로 이미 왕복 모두 계산됨)
+                    if (plans[i]) setPlan(plans[i]!);
                   }}
                   className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
                     selectedFlight === i
