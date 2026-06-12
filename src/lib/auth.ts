@@ -9,6 +9,14 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    signIn({ profile }) {
+      const allowed = (process.env.ALLOWED_EMAILS ?? 'yun2030@gmail.com')
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
+      const email = profile?.email?.toLowerCase() ?? '';
+      return allowed.includes(email);
+    },
     session({ session, token }) {
       if (session.user) {
         (session.user as { id?: string }).id = token.sub;

@@ -93,7 +93,7 @@ export async function getKoreaTransitDirections(
   to: string,
   departureTimestamp: number
 ): Promise<TransitRoute> {
-  const naverUrl = `https://map.naver.com/v5/directions/-/-/transit?f=${encodeURIComponent(from)}&t=${encodeURIComponent(to)}`;
+  const naverUrl = `https://map.naver.com/p/search/${encodeURIComponent(to)}`;
 
   try {
     const res = await fetch('/api/korea-transit', {

@@ -445,9 +445,9 @@ export function TripTimeline({ plan, loading, bufferMins = 90 }: Props) {
   // Fallback URLs — departure leg and arrival leg swap by direction
   const depFallback = departureRoute?.googleMapsUrl || (isJapanDep
     ? `https://transit.yahoo.co.jp/search/result?from=${encodeURIComponent(homeAddress)}&to=${encodeURIComponent(flight.from.address)}`
-    : `https://map.naver.com/v5/directions/-/-/transit`);
+    : `https://map.naver.com/p/search/${encodeURIComponent(destAddress)}`);
   const arrFallback = arrivalRoute?.googleMapsUrl || (isJapanDep
-    ? `https://map.naver.com/v5/directions/-/-/transit`
+    ? `https://map.naver.com/p/search/${encodeURIComponent(destAddress)}`
     : `https://transit.yahoo.co.jp/search/result?from=${encodeURIComponent(flight.to.address)}&to=${encodeURIComponent(destAddress)}`);
 
   return (

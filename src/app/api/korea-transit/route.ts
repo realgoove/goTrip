@@ -8,6 +8,24 @@ const KNOWN_COORDS: Record<string, { lat: number; lng: number }> = {
   '김포공항':     { lat: 37.5585, lng: 126.7942 },
 };
 
+type Coord = { lat: number; lng: number };
+
+// 현재 네이버 지도 길찾기 표준 형식: 좌표(경도,위도)+이름으로 출발/도착을 정확히 지정
+function naverTransitUrl(
+  fromName: string,
+  fromCoord: Coord | null,
+  toName: string,
+  toCoord: Coord | null,
+): string {
+  if (fromCoord && toCoord) {
+    const s = `${fromCoord.lng},${fromCoord.lat},${encodeURIComponent(fromName)}`;
+    const e = `${toCoord.lng},${toCoord.lat},${encodeURIComponent(toName)}`;
+    return `https://map.naver.com/p/directions/${s}/${e}/-/transit`;
+  }
+  // 좌표를 못 구한 경우: 도착지 검색으로라도 안내
+  return `https://map.naver.com/p/search/${encodeURIComponent(toName)}`;
+}
+
 async function geocode(address: string): Promise<{ lat: number; lng: number } | null> {
   const known = KNOWN_COORDS[address.trim()];
   if (known) return known;
@@ -92,8 +110,8 @@ export async function POST(req: NextRequest) {
 
   const apiKey = process.env.ODSAY_API_KEY;
 
-  // Naver Maps deep link for fallback
-  const naverUrl = `https://map.naver.com/v5/directions/-/-/transit?c=15,0,0,0,dh&f=${encodeURIComponent(from)}&t=${encodeURIComponent(to)}`;
+  // 좌표 없이 만드는 임시 폴백 (geocode 실패 시 대비)
+  let naverUrl = naverTransitUrl(from, null, to, null);
 
   if (!apiKey) {
     return NextResponse.json({ status: 'NO_API_KEY', naverUrl });
@@ -106,6 +124,9 @@ export async function POST(req: NextRequest) {
     if (!fromCoord || !toCoord) {
       return NextResponse.json({ status: 'GEOCODE_FAILED', naverUrl });
     }
+
+    // 좌표를 구했으니 정확한 좌표 기반 네이버 길찾기 URL로 교체
+    naverUrl = naverTransitUrl(from, fromCoord, to, toCoord);
 
     // 2. Calculate departure time for ODsay (optional but improves accuracy)
     const date = departureTimestamp
