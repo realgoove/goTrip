@@ -46,6 +46,23 @@ function subwayColor(route?: string): string | undefined {
   return undefined;
 }
 
+// 여러 경로 중 "지하철 위주" 경로를 우선 선택한다.
+// (TMAP에 교통수단 선호 파라미터가 없어 결과를 점수화해 고른다)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function pickSubwayPreferred(itins: any[]): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const score = (it: any): number => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const legs = (it.legs || []) as any[];
+    const subway = legs.filter((l) => l.mode === 'SUBWAY' || l.mode === 'TRAIN').length;
+    const bus = legs.filter((l) => l.mode === 'BUS' || l.mode === 'EXPRESSBUS').length;
+    const totalMin = (it.totalTime || 0) / 60;
+    // 지하철 구간이 많을수록 크게 가산, 버스 구간은 감산, 소요시간은 약하게 감산
+    return subway * 100 - bus * 30 - totalMin * 0.5;
+  };
+  return [...itins].sort((a, b) => score(b) - score(a))[0];
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildRoute(itin: any, naverUrl: string): TransitRoute {
   const steps: TransitStep[] = [];
@@ -126,7 +143,7 @@ export async function POST(req: NextRequest) {
       startY: String(fromCoord.lat),
       endX: String(toCoord.lng),
       endY: String(toCoord.lat),
-      count: 1,
+      count: 10,
       format: 'json',
       lang: 0,
     };
@@ -145,13 +162,13 @@ export async function POST(req: NextRequest) {
     });
     const data = await res.json();
 
-    const itin = data?.metaData?.plan?.itineraries?.[0];
-    if (!itin) {
+    const itins = data?.metaData?.plan?.itineraries;
+    if (!itins?.length) {
       console.error('[korea-transit] TMAP no itinerary:', JSON.stringify(data?.result || data?.error || data).slice(0, 300));
       return NextResponse.json({ status: 'LINK_ONLY', naverUrl });
     }
 
-    return NextResponse.json(buildRoute(itin, naverUrl));
+    return NextResponse.json(buildRoute(pickSubwayPreferred(itins), naverUrl));
   } catch (e) {
     console.error('[korea-transit] TMAP error:', e);
     return NextResponse.json({ status: 'LINK_ONLY', naverUrl });

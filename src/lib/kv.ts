@@ -1,4 +1,5 @@
 import { kv } from '@vercel/kv';
+import { TripPlan, ParsedFlight } from '@/types';
 
 export interface SavedSearch {
   id: string;
@@ -10,6 +11,10 @@ export interface SavedSearch {
   homeAddress: string;
   destAddress: string;
   bufferMins: number;
+  // 저장 시점에 계산된 경로 전체 — 이력 선택 시 재검색 없이 그대로 복원한다.
+  plan?: TripPlan;
+  parsedFlights?: ParsedFlight[];
+  selectedFlight?: number;
 }
 
 function key(userId: string, type: string) {

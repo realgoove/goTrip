@@ -7,7 +7,6 @@ import { SearchHistory } from '@/components/SearchHistory';
 import { parseItinerary } from '@/lib/parseItinerary';
 import { getJapanTransitDirections, getJapanTransitDirectionsByDeparture, getKoreaTransitDirections } from '@/lib/directions';
 import { TripPlan, ParsedFlight } from '@/types';
-import { SAMPLE_ITINERARY } from '@/lib/constants';
 import { useHistory, SavedSearch } from '@/hooks/useHistory';
 import { generateTimelineText } from '@/lib/formatTimeline';
 
@@ -31,20 +30,21 @@ function minsToTimestamp(dateISO: string, totalMins: number): number {
 
 export default function Home() {
   const { data: session, status } = useSession();
-  const [itinerary, setItinerary] = useState(SAMPLE_ITINERARY);
+  const [itinerary, setItinerary] = useState('');
   const [plan, setPlan] = useState<TripPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parsedFlights, setParsedFlights] = useState<ParsedFlight[]>([]);
   const [selectedFlight, setSelectedFlight] = useState(0);
-  const [homeAddress, setHomeAddress] = useState('東京都新宿区西新宿2-8-1');
-  const [destAddress, setDestAddress] = useState('서울특별시 중구 세종대로 110');
+  const [homeAddress, setHomeAddress] = useState('');
+  const [destAddress, setDestAddress] = useState('');
   const [bufferMins, setBufferMins] = useState(90);
 
   const fetchingRef = useRef(false);
   const hasSearched = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastItineraryRef = useRef(SAMPLE_ITINERARY);
+  const lastItineraryRef = useRef('');
+  const initedRef = useRef(false);
 
   const historyHook = useHistory(!!session);
   const [copied, setCopied] = useState(false);
@@ -126,6 +126,10 @@ export default function Home() {
       homeAddress,
       destAddress,
       bufferMins,
+      // 계산된 경로 전체를 함께 저장 → 이력 선택 시 재검색 없이 복원
+      plan: plan ?? undefined,
+      parsedFlights,
+      selectedFlight,
     });
   }
 
@@ -137,20 +141,29 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  async function handleSelectHistory(s: SavedSearch) {
+  function handleSelectHistory(s: SavedSearch) {
     setItinerary(s.itinerary);
     setHomeAddress(s.homeAddress);
     setDestAddress(s.destAddress);
     setBufferMins(s.bufferMins);
     setError(null);
-
-    const flights = parseItinerary(s.itinerary);
-    if (!flights.length) return;
     lastItineraryRef.current = s.itinerary;
-    setParsedFlights(flights);
-    setSelectedFlight(0);
-    hasSearched.current = true;
-    await fetchRoutes(flights, 0, s.homeAddress, s.destAddress, s.bufferMins);
+
+    if (s.plan) {
+      // 저장된 경로를 그대로 복원 — 재검색하지 않는다
+      setParsedFlights(s.parsedFlights ?? parseItinerary(s.itinerary));
+      setSelectedFlight(s.selectedFlight ?? 0);
+      setPlan(s.plan);
+      hasSearched.current = false; // 주소/버퍼 변경에 의한 자동 재검색 방지
+    } else {
+      // 경로가 저장되지 않은 옛 이력 → 기존처럼 검색
+      const flights = parseItinerary(s.itinerary);
+      if (!flights.length) return;
+      setParsedFlights(flights);
+      setSelectedFlight(0);
+      hasSearched.current = true;
+      fetchRoutes(flights, 0, s.homeAddress, s.destAddress, s.bufferMins);
+    }
   }
 
   useEffect(() => {
@@ -164,6 +177,16 @@ export default function Home() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [homeAddress, destAddress, bufferMins]);
+
+  // 로그인 후 이력이 로드되면 가장 최근 저장한 경로를 자동으로 표시 (재검색 없음)
+  useEffect(() => {
+    if (initedRef.current || !session) return;
+    if (historyHook.history.length > 0) {
+      initedRef.current = true;
+      handleSelectHistory(historyHook.history[0]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyHook.history, session]);
 
   if (status === 'loading') {
     return (
