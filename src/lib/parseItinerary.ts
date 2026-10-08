@@ -74,8 +74,9 @@ export function parseItinerary(text: string, targetYear: number = 2026): ParsedF
     if (tokens.length < 8) continue;
 
     // Find 4-digit time tokens (HHMM format)
+    // 편명(tokens[2])이 4자리(예: KE 2102)면 시각으로 오인되므로 그 다음 토큰부터 찾는다
     const timeIndices: number[] = [];
-    for (let j = 0; j < tokens.length; j++) {
+    for (let j = 3; j < tokens.length; j++) {
       if (/^\d{4}$/.test(tokens[j]) && parseInt(tokens[j]) <= 2359) {
         timeIndices.push(j);
       }
