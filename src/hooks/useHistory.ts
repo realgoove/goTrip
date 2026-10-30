@@ -19,36 +19,54 @@ export function useHistory(loggedIn: boolean) {
 
   useEffect(() => {
     if (!loggedIn) { setHistory([]); return; }
-    fetch('/api/history')
-      .then(r => r.ok ? r.json() : [])
-      .then(data => {
-        const server = Array.isArray(data) ? data : [];
-        if (server.length > 0) {
-          setHistory(server);
-          lsSave(server);
-        } else {
-          // KV 미설정 등으로 서버에 없으면 localStorage에서 복원
-          const local = lsLoad();
-          setHistory(local);
+    (async () => {
+      const local = lsLoad();
+      try {
+        const r = await fetch('/api/history');
+        // 서버 장애(KV 미연결 등) → 이 기기의 localStorage로 대체
+        if (!r.ok) { setHistory(local); return; }
+        const data = await r.json();
+        const server: SavedSearch[] = Array.isArray(data) ? data : [];
+
+        // 이 기기에만 있는 이력은 서버로 올려 다른 기기에서도 보이게 한다
+        const serverIds = new Set(server.map(s => s.id));
+        const missing = local.filter(s => !serverIds.has(s.id));
+        if (missing.length) {
+          const up = await fetch('/api/history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(missing),
+          }).catch(() => null);
+          if (!up?.ok) console.error('[useHistory] localStorage 이력 업로드 실패');
         }
-      })
-      .catch(() => setHistory(lsLoad()));
+
+        const merged = [...server, ...missing]
+          .sort((a, b) => (b.savedAt ?? '').localeCompare(a.savedAt ?? ''))
+          .slice(0, 20);
+        setHistory(merged);
+        lsSave(merged);
+      } catch {
+        setHistory(local);
+      }
+    })();
   }, [loggedIn]);
 
+  // 서버 저장에 실패해도 이 기기에는 남기고, 호출한 쪽이 알 수 있게 예외를 던진다
   async function save(search: Omit<SavedSearch, 'id' | 'savedAt'>) {
     if (!loggedIn) return;
     const id = [search.flightDateISO, search.returnDateISO].filter(Boolean).join('_');
     const full: SavedSearch = { ...search, id, savedAt: new Date().toISOString() };
-    await fetch('/api/history', {
+    const res = await fetch('/api/history', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(full),
-    }).catch(() => {});
+    }).catch(() => null);
     setHistory(prev => {
       const next = [full, ...prev.filter(s => s.id !== full.id)].slice(0, 20);
       lsSave(next);
       return next;
     });
+    if (!res?.ok) throw new Error('SERVER_SAVE_FAILED');
   }
 
   async function remove(id: string) {

@@ -48,25 +48,23 @@ export async function deleteAddress(userId: string, type: string, address: strin
 
 // ── Search history ────────────────────────────────────────────────────────────
 
+// 이력 함수는 KV 오류를 삼키지 않는다 — 저장소가 사라져도 "저장됨"으로 보이던 문제 방지.
+// 호출하는 API 라우트가 503으로 돌려주고, 클라이언트는 localStorage로 대체한다.
 export async function getHistory(userId: string): Promise<SavedSearch[]> {
-  try {
-    return await kv.get<SavedSearch[]>(`history:${userId}`) ?? [];
-  } catch {
-    return [];
-  }
+  return await kv.get<SavedSearch[]>(`history:${userId}`) ?? [];
 }
 
-export async function saveToHistory(userId: string, search: SavedSearch): Promise<void> {
-  try {
-    const current = await getHistory(userId);
-    const next = [search, ...current.filter(s => s.id !== search.id)].slice(0, 20);
-    await kv.set(`history:${userId}`, next);
-  } catch {}
+export async function saveToHistory(userId: string, searches: SavedSearch[]): Promise<void> {
+  const current = await getHistory(userId);
+  const ids = new Set(searches.map(s => s.id));
+  // 다른 기기에서 올린 옛 이력이 섞여도 최신순을 유지
+  const next = [...searches, ...current.filter(s => !ids.has(s.id))]
+    .sort((a, b) => (b.savedAt ?? '').localeCompare(a.savedAt ?? ''))
+    .slice(0, 20);
+  await kv.set(`history:${userId}`, next);
 }
 
 export async function deleteFromHistory(userId: string, id: string): Promise<void> {
-  try {
-    const current = await getHistory(userId);
-    await kv.set(`history:${userId}`, current.filter(s => s.id !== id));
-  } catch {}
+  const current = await getHistory(userId);
+  await kv.set(`history:${userId}`, current.filter(s => s.id !== id));
 }
