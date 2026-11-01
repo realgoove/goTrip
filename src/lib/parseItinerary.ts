@@ -58,6 +58,76 @@ function findAirportsInTokens(tokens: string[]): { from: AirportInfo; to: Airpor
   };
 }
 
+// AI(/api/parse-itinerary)가 맥락으로 읽어낸 결과
+export interface AIFlight {
+  date: string;
+  airline: string;
+  flightNumber: string;
+  cabin: string;
+  fromCode: string;
+  fromName: string;
+  fromCountry: string;
+  fromTerminal: string;
+  toCode: string;
+  toName: string;
+  toCountry: string;
+  toTerminal: string;
+  departureTime: string;
+  arrivalTime: string;
+}
+
+const MONTH_ABBR = Object.keys(MONTHS);
+
+// IATA 코드로 공항 정보를 찾는다 — 등록된 공항이면 기존 이름(예: 'TOKYO HANEDA')을 써서 경로 로직과 맞춘다
+function airportFromCode(code: string, name: string, country: string, terminal: string): AirportInfo {
+  const upper = code.toUpperCase();
+  const entry = Object.entries(AIRPORTS).find(([, a]) => a.code === upper);
+  const info: AirportInfo = entry
+    ? { name: entry[0], ...entry[1] }
+    : { name: name.toUpperCase(), code: upper, address: `${name} Airport`, city: name, country };
+  if (terminal) info.terminal = terminal;
+  return info;
+}
+
+export function flightsFromAI(items: AIFlight[], bookingRef: string = ''): ParsedFlight[] {
+  const flights: ParsedFlight[] = [];
+  for (const f of items) {
+    const dm = f.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const dep = f.departureTime.match(/^(\d{1,2}):(\d{2})$/);
+    const arr = f.arrivalTime.match(/^(\d{1,2}):(\d{2})$/);
+    if (!dm || !dep || !arr) continue;
+
+    const year = parseInt(dm[1]);
+    const month = parseInt(dm[2]) - 1;
+    const day = parseInt(dm[3]);
+    const depStr = dep[1].padStart(2, '0') + dep[2];
+    const arrStr = arr[1].padStart(2, '0') + arr[2];
+    const airline = f.airline.toUpperCase();
+    // 자정 넘어 도착하는 편은 다음 날로
+    const arrDayOffset = arrStr < depStr ? 1 : 0;
+
+    flights.push({
+      date: `${String(day).padStart(2, '0')}${MONTH_ABBR[month]}`,
+      year,
+      dateISO: f.date,
+      airline,
+      airlineName: AIRLINE_NAMES[airline] || airline,
+      flightNumber: f.flightNumber.toUpperCase().startsWith(airline)
+        ? f.flightNumber.slice(airline.length).trim()
+        : f.flightNumber,
+      cabin: f.cabin.toUpperCase() || 'ECONOMY',
+      from: airportFromCode(f.fromCode, f.fromName, f.fromCountry, f.fromTerminal),
+      to: airportFromCode(f.toCode, f.toName, f.toCountry, f.toTerminal),
+      departureTime: formatTime(depStr),
+      arrivalTime: formatTime(arrStr),
+      departureTimestamp: timeToTimestamp(day, month, year, depStr),
+      arrivalTimestamp: timeToTimestamp(day + arrDayOffset, month, year, arrStr),
+      bookingRef,
+    });
+  }
+  return flights;
+}
+
 export function parseItinerary(text: string, targetYear: number = 2026): ParsedFlight[] {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const flights: ParsedFlight[] = [];

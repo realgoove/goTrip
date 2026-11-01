@@ -4,7 +4,7 @@ import { useSession, signIn, signOut } from 'next-auth/react';
 import { FlightInputForm } from '@/components/FlightInputForm';
 import { TripTimeline } from '@/components/TripTimeline';
 import { SearchHistory } from '@/components/SearchHistory';
-import { parseItinerary } from '@/lib/parseItinerary';
+import { parseItinerary, flightsFromAI } from '@/lib/parseItinerary';
 import { getJapanTransitDirections, getJapanTransitDirectionsByDeparture, getKoreaTransitDirections } from '@/lib/directions';
 import { TripPlan, ParsedFlight } from '@/types';
 import { useHistory, SavedSearch } from '@/hooks/useHistory';
@@ -26,6 +26,18 @@ function minsToTimestamp(dateISO: string, totalMins: number): number {
   const h = Math.floor(totalMins / 60) % 24;
   const m = totalMins % 60;
   return Math.floor(new Date(Date.UTC(y, mo - 1, d, h - 9, m)).getTime() / 1000);
+}
+
+async function parseItineraryWithAI(text: string): Promise<ParsedFlight[]> {
+  const today = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD
+  const res = await fetch('/api/parse-itinerary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, today }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+  return flightsFromAI(data.flights ?? [], data.bookingRef ?? '');
 }
 
 export default function Home() {
@@ -95,15 +107,29 @@ export default function Home() {
   // 검색 버튼: 왕복(모든 항공편) 경로를 한 번에 검색해 캐시에 채운다
   async function handleSubmit(itin: string) {
     setError(null);
-    const flights = parseItinerary(itin);
+    setLoading(true);
+    // 알려진 형식(JAL)은 즉시 파싱, 그 외 형식은 AI가 맥락으로 읽는다
+    let flights = parseItinerary(itin);
     if (!flights.length) {
-      setError('항공편 정보를 파싱하지 못했습니다. 입력된 텍스트를 확인해 주세요.');
+      try {
+        flights = await parseItineraryWithAI(itin);
+      } catch (e) {
+        console.error('[handleSubmit] AI parse failed:', e);
+        setError(e instanceof Error && e.message === 'ANTHROPIC_API_KEY_MISSING'
+          ? 'AI 인식용 ANTHROPIC_API_KEY가 설정되지 않았습니다.'
+          : 'AI로 항공편 정보를 인식하지 못했습니다. 다시 시도해 주세요.');
+        setLoading(false);
+        return;
+      }
+    }
+    if (!flights.length) {
+      setError('항공편 정보를 찾지 못했습니다. 입력된 텍스트를 확인해 주세요.');
+      setLoading(false);
       return;
     }
     lastItineraryRef.current = itin;
     setParsedFlights(flights);
     setSelectedFlight(0);
-    setLoading(true);
     try {
       const results = await Promise.all(
         flights.map((_, i) => computeRoute(flights, i, homeAddress, destAddress, bufferMins))
@@ -163,7 +189,9 @@ export default function Home() {
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       console.error('[handleSave] failed:', e);
-      setError('저장에 실패했습니다. 다시 시도해 주세요.');
+      setError(e instanceof Error && e.message === 'SERVER_SAVE_FAILED'
+        ? '이 기기에만 저장되었습니다(서버 저장 실패). 다른 기기에서는 보이지 않습니다.'
+        : '저장에 실패했습니다. 다시 시도해 주세요.');
     }
   }
 
