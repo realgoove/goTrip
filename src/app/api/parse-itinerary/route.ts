@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-haiku-5-5',
       max_tokens: 2048,
       tools: [RECORD_FLIGHTS_TOOL],
       tool_choice: { type: 'tool', name: 'record_flights' },
