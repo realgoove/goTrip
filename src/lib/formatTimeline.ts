@@ -109,10 +109,9 @@ export function generateTimelineText(plan: TripPlan, bufferMins: number): string
     ?? (departureRoute?.totalDurationSeconds
       ? subMin(airportArriveTime, Math.ceil(departureRoute.totalDurationSeconds / 60))
       : subMin(airportArriveTime, 30));
-  const leaveTime = subMin(homeStopTime, 15);
 
   // 배너
-  lines.push(`⏰ ${isJapanDep ? '집' : '숙소'} 출발 권장: ${leaveTime} (여유 15분 포함)`);
+  lines.push(`⏰ ${isJapanDep ? '집' : '숙소'} 출발: ${homeStopTime}`);
   lines.push('');
 
   // 출발지

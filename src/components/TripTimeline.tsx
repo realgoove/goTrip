@@ -378,7 +378,6 @@ export function TripTimeline({ plan, loading, bufferMins = 90 }: Props) {
     ?? (departureRoute?.totalDurationSeconds
       ? subMin(airportArriveTime, Math.ceil(departureRoute.totalDurationSeconds / 60))
       : subMin(airportArriveTime, 30));
-  const leaveTime = subMin(homeStopTime, 15);
 
   const korTotalMins = arrivalRoute?.totalDurationSeconds
     ? Math.ceil(arrivalRoute.totalDurationSeconds / 60)
@@ -456,10 +455,8 @@ export function TripTimeline({ plan, loading, bufferMins = 90 }: Props) {
       <div className="flex items-center gap-3 mb-5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
         <span className="text-xl shrink-0">⏰</span>
         <div>
-          <p className="text-xs text-amber-600 font-medium">{isJapanDep ? '집' : '숙소'} 출발 권장 시간</p>
-          <p className="text-xl font-bold text-amber-900 leading-none mt-0.5">{leaveTime}
-            <span className="text-xs font-normal text-amber-500 ml-1.5">여유 15분 포함</span>
-          </p>
+          <p className="text-xs text-amber-600 font-medium">{isJapanDep ? '집' : '숙소'} 출발 시간</p>
+          <p className="text-xl font-bold text-amber-900 leading-none mt-0.5">{homeStopTime}</p>
         </div>
       </div>
 
